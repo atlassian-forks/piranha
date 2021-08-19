@@ -38,21 +38,18 @@ public class CorePiranhaTest {
 
   @Before
   public void setup() {
-    compilationHelper =
-        CompilationTestHelper.newInstance(XPFlagCleaner.class, getClass())
-            .setArgs(Arrays.asList("-d", temporaryFolder.getRoot().getAbsolutePath()));
+    compilationHelper = CompilationTestHelper.newInstance(XPFlagCleaner.class, getClass());
   }
 
   @Test
   public void test_xpflagsPositiveCases() {
     compilationHelper
         .setArgs(
-            Arrays.asList(
-                "-d",
-                temporaryFolder.getRoot().getAbsolutePath(),
-                "-XepOpt:Piranha:FlagName=STALE_FLAG",
-                "-XepOpt:Piranha:IsTreated=true",
-                "-XepOpt:Piranha:Config=config/properties.json"))
+            "-d",
+            temporaryFolder.getRoot().getAbsolutePath(),
+            "-XepOpt:Piranha:FlagName=STALE_FLAG",
+            "-XepOpt:Piranha:IsTreated=true",
+            "-XepOpt:Piranha:Config=config/properties.json")
         .addSourceFile("XPFlagCleanerPositiveCases.java")
         .doTest();
   }

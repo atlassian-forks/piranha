@@ -35,8 +35,8 @@ tasks.withType(JavaCompile) {
       option("Piranha:IsTreated", "true")
       option("Piranha:Config", "${project.projectDir}/config/properties.json")
   }
-  options.errorprone.errorproneArgs << "-XepPatchChecks:Piranha"
-  options.errorprone.errorproneArgs << "-XepPatchLocation:IN_PLACE"
+  options.errorprone.errorproneArgs.add("-XepPatchChecks:Piranha")
+  options.errorprone.errorproneArgs.add("-XepPatchLocation:IN_PLACE")
 }
 
 compileJava.doFirst {

@@ -24,6 +24,7 @@ public final class PiranhaTestingHelpers {
     return bcr.addInput("XPTest.java").expectUnchanged();
   }
 
+  @SuppressWarnings("MissingTestCall")
   public static BugCheckerRefactoringTestHelper addExperimentFlagEnumsWithConstructor(
       BugCheckerRefactoringTestHelper bcr, boolean hasEnumConfiguration) {
     BugCheckerRefactoringTestHelper.ExpectOutput inputLines =
