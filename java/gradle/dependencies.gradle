@@ -15,7 +15,7 @@
  */
 
 def versions = [
-    errorProne             : "2.4.0",
+    errorProne             : "2.8.1",
 ]
 
 def apt = [
