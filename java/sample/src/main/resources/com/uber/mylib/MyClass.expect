@@ -13,7 +13,6 @@ package com.uber.mylib;
 public class MyClass {
 
   enum TestExperimentName {
-    
   }
 
   private XPTest expt;
@@ -23,7 +22,6 @@ public class MyClass {
   }
 
   public void bar() {
-    
   }
 
   static class XPTest {

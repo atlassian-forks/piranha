@@ -729,7 +729,9 @@ public class XPFlagCleaner extends BugChecker
     if (classSymbol.getKind().equals(ElementKind.ENUM) && isTreatmentGroupEnum(classSymbol)) {
       treatmentGroupsEnum = classSymbol.fullname.toString();
       if (classSymbol.getNestingKind().isNested()) {
-        return buildDescription(classTree).addFix(SuggestedFix.delete(classTree)).build();
+        return buildDescription(classTree)
+            .addFix(SuggestedFix.delete(classTree, visitorState))
+            .build();
       } else {
         String emptyEnum =
             PiranhaUtils.DELETE_REQUEST_COMMENT
@@ -938,7 +940,7 @@ public class XPFlagCleaner extends BugChecker
       if (updateCode) {
         Description.Builder builder = buildDescription(tree);
         SuggestedFix.Builder fixBuilder = SuggestedFix.builder();
-        fixBuilder.delete(tree);
+        fixBuilder.delete(tree, state);
         decrementAllSymbolUsages(tree, state, fixBuilder);
         builder.addFix(fixBuilder.build());
         endPos = state.getEndPosition(tree);
@@ -999,7 +1001,7 @@ public class XPFlagCleaner extends BugChecker
     } else if (identifier == null
         && ASTHelpers.getSymbol(tree) != null
         && xpFlagName.equals(ASTHelpers.getSymbol(tree).getConstantValue())) {
-      return buildDescription(tree).addFix(SuggestedFix.delete(tree)).build();
+      return buildDescription(tree).addFix(SuggestedFix.delete(tree, state)).build();
     }
 
     Symbol sym = ASTHelpers.getSymbol(tree);
@@ -1035,7 +1037,8 @@ public class XPFlagCleaner extends BugChecker
       // Let's replace the current enum constant's ending with the previous one
       return buildDescription(tree)
           .addFix(
-              SuggestedFix.replace(tree, state.getSourceForNode(tree) + enumEnding.getChar(), 0, 1))
+              SuggestedFix.replace(
+                  tree, state.getSourceForNode(tree) + enumEnding.getChar(), 0, 1))
           .build();
     }
 
@@ -1170,14 +1173,17 @@ public class XPFlagCleaner extends BugChecker
     if (enumAsStr != null
         && (enumAsStr.contains(varAsStrWithComma)
             || (enumAsStr.contains(varAsStrWithSemicolon) && !isSingleEnumConstant))) {
-      return buildDescription(tree).addFix(SuggestedFix.replace(tree, "", 0, 1)).build();
+      int startPosAdjustment = SuggestedFix.getAdjustedStartPosition(tree, state);
+      return buildDescription(tree)
+          .addFix(SuggestedFix.replace(tree, "", startPosAdjustment, 1))
+          .build();
     } else {
       // Fallback for single/last enum variable detection
       //
       // Also if we remove the only enum constant left, and the last enum constant ends in a
       // semi-colon, we will leave that semi-colon to make sure we still have compilable Java if
       // there are non-enum-constant fields or methods in the enum class
-      return buildDescription(tree).addFix(SuggestedFix.delete(tree)).build();
+      return buildDescription(tree).addFix(SuggestedFix.delete(tree, state)).build();
     }
   }
 
@@ -1376,6 +1382,8 @@ public class XPFlagCleaner extends BugChecker
     // Check first if the whole method must go away
     if (deleteMethod) {
       fixBuilder.delete(tree);
+      // TODO: See if whitespace removal is needed here; write a test
+      // fixBuilder.delete(tree, state);
       decrementAllSymbolUsages(tree, state, fixBuilder);
       skipWithin(state.getPath()); // Deleting full method, skip refactorings within it
     } else {
@@ -1385,10 +1393,14 @@ public class XPFlagCleaner extends BugChecker
       // should not overlap, given the logic above, so deleting each independently is safe.
       for (ExpressionTree expr : deletableIdentifiers) {
         fixBuilder.delete(expr);
+        // TODO: See if whitespace removal is needed here; write a test
+        // fixBuilder.delete(expr, state);
         decrementAllSymbolUsages(expr, state, fixBuilder);
       }
       for (AnnotationTree at : deletableAnnotations) {
         fixBuilder.delete(at);
+        // TODO: See if whitespace removal is needed here; write a test
+        // fixBuilder.delete(expr, state);
         decrementAllSymbolUsages(at, state, fixBuilder);
       }
     }
@@ -1530,7 +1542,7 @@ public class XPFlagCleaner extends BugChecker
               // We are past the if statement, so everything after this will be deleted,
               // decrement all usage counts accordingly
               decrementAllSymbolUsages(stmt, visitorState, fixBuilder);
-              fixBuilder.delete(stmt);
+              fixBuilder.delete(stmt, visitorState);
             } else if (!stmt.equals(ifTree)) {
               // preceding statement, keep it
               continue;
@@ -1541,6 +1553,9 @@ public class XPFlagCleaner extends BugChecker
               }
               decrementAllSymbolUsages(ifTree.getCondition(), visitorState, fixBuilder);
               fixBuilder.replace(ifTree, replacementString);
+              // TODO: See if whitespace removal is needed here; write a test
+              // fixBuilder.replace(ifTree, visitorState, replacementString);
+
               // elide the remaining statements
               foundIf = true;
             }
@@ -1550,7 +1565,17 @@ public class XPFlagCleaner extends BugChecker
           return builder.addFix(fixBuilder.build()).build();
         }
       }
-      fixBuilder.replace(ifTree, replacementString);
+
+      if ("".equals(replacementString)) {
+        // If if-statement is being removed and not replaced with anything, we also want to clean up
+        // the whitespace it leaves behind
+        fixBuilder.replace(ifTree, visitorState, replacementString);
+      } else {
+        // If the if-statement is being replaced with its inner statement, we can keep the
+        // whitespace around :)
+        fixBuilder.replace(ifTree, replacementString);
+      }
+
       for (StatementTree removedBranch : removedBranches) {
         decrementAllSymbolUsages(removedBranch, visitorState, fixBuilder);
       }
