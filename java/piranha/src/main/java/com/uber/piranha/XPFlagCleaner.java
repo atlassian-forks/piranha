@@ -14,6 +14,9 @@
 package com.uber.piranha;
 
 import static com.google.errorprone.BugPattern.SeverityLevel.SUGGESTION;
+import static com.uber.piranha.bytecode.BytecodeUtils.getBytecode;
+import static com.uber.piranha.bytecode.BytecodeUtils.u2;
+import static com.uber.piranha.bytecode.BytecodeUtils.u4;
 
 import com.facebook.infer.annotation.Initializer;
 import com.google.auto.service.AutoService;
@@ -55,6 +58,12 @@ import com.sun.source.tree.UnaryTree;
 import com.sun.source.tree.VariableTree;
 import com.sun.source.util.TreePath;
 import com.sun.tools.javac.code.Symbol;
+import com.uber.piranha.bytecode.BytecodeInstruction;
+import com.uber.piranha.bytecode.ConstantPool;
+import com.uber.piranha.bytecode.ConstantPoolType;
+import com.uber.piranha.bytecode.constants.ConstantItem;
+import com.uber.piranha.bytecode.constants.StringReference;
+import com.uber.piranha.bytecode.constants.UnicodeConstant;
 import com.uber.piranha.config.Config;
 import com.uber.piranha.config.PiranhaConfigurationException;
 import com.uber.piranha.config.PiranhaEnumRecord;
@@ -295,7 +304,7 @@ public class XPFlagCleaner extends BugChecker
     Preconditions.checkArgument(counterData.count >= perSymbolDeletedUsages);
     if (counterData.count == perSymbolDeletedUsages) {
       // Remove the variable declaration.
-      builder.delete(counterData.declaration);
+      builder.delete(counterData.declaration, visitorState);
     }
   }
 
@@ -490,21 +499,176 @@ public class XPFlagCleaner extends BugChecker
       return enumsMatchingConstructorArgsCache.get(enumWithClassSymbol);
     }
 
-    // TODO: Find constructor arguments purely through the symbol table; without the need for state
-    //       Then, we will be able remove the following exception
     ClassTree enumClassTree = ASTHelpers.findClass(classSymbol, state);
-    if (enumClassTree == null) {
-      throw new PiranhaRuntimeException(
-          "Detected enum constant of class "
-              + classSymbol.className()
-              + ", which is mentioned by"
-              + " Piranha's configuration as part of enumProperties. However, enum definition source"
-              + " is not available when looking at this usage (this can happen when cleaning up flags"
-              + " across build targets)."
-              + "\n\nIf you are trying to use Piranha to clean up enum flags based on the string"
-              + " argument to their constructor (e.g. using enumProperties), the current"
-              + " implementation will fail to match flag usages on a separate target as that"
-              + " containing the enum source, resulting in partial clean up.");
+
+    // Enum definition source is not available when looking at this usage (this can happen when
+    // cleaning up flags across build targets).
+    //
+    // So we need to load the bytecode for this enum definition, as the enum constructor argument
+    // constants are not found in the symbol table, as they are not relevant at compile time.
+    //
+    // We then process the bytecode and turn it back into source code for ease of processing, but
+    // technically, this is not necessary. We only need to make sure the enum definition exists in
+    // the bytecode with the expected argument in the proper argument index.
+    //
+    // Using source code does allow us to use the same ClassTree structure to verify that the enum
+    // definition exists rather than having to parse bytecode without a library!
+
+    if (enumClassTree == null && classSymbol.classfile != null) {
+      boolean foundConstant = false;
+
+      byte[] classBytecode = getBytecode(classSymbol.classfile);
+
+      int index = 8;
+      int constantPoolEntryCount = u2(classBytecode, index);
+      index += 2;
+
+      ConstantPool constants = new ConstantPool();
+
+      for (int entry = 1; entry < constantPoolEntryCount; entry++) {
+        ConstantPoolType type = ConstantPoolType.fromValue(classBytecode[index]);
+        int constantSize = type.getSize(classBytecode, index);
+
+        index += 1;
+        if (type == ConstantPoolType.UNICODE) {
+          UnicodeConstant uni = new UnicodeConstant(classBytecode, index, constantSize);
+          constants.addItem(entry, uni);
+        } else if (type == ConstantPoolType.STRING_REF) {
+          StringReference str_ref = new StringReference(classBytecode, index);
+          constants.addItem(entry, str_ref);
+        }
+        index += constantSize;
+      }
+
+      //      u2             access_flags;
+      //      u2             this_class;
+      //      u2             super_class;
+      //      u2             interfaces_count;
+      index += 6;
+      int interfaceEntryCount = u2(classBytecode, index);
+      index += 2;
+
+      // Ignore interfaces, but we should count them
+      // Each interface entry is 2 bytes
+      index += interfaceEntryCount * 2;
+
+      int fieldSizeIndex = index;
+      int fieldEntryCount = u2(classBytecode, fieldSizeIndex);
+
+      index = fieldSizeIndex + 2;
+
+      //      field_info {
+      //        u2             access_flags;
+      //        u2             name_index;
+      //        u2             descriptor_index;
+      //        u2             attributes_count;
+      //        attribute_info attributes[attributes_count];
+      //      }
+
+      for (int entry = 0; entry < fieldEntryCount; entry++) {
+        //        attribute_info {
+        //          u2 attribute_name_index;
+        //          u4 attribute_length;
+        //          u1 info[attribute_length];
+        //        }
+        index += 6;
+        int attributesCount = u2(classBytecode, index);
+        index += 2;
+        for (int attributeEntry = 0; attributeEntry < attributesCount; attributeEntry++) {
+          //          int attributeNameIndex = u2(classBytecode, attributeStartIndex);
+          index += 2;
+          int attributeLength = u4(classBytecode, index);
+          index += 4 + attributeLength;
+        }
+      }
+
+      int methodEntryCount = u2(classBytecode, index);
+
+      index += 2;
+
+      for (int entry = 0; entry < methodEntryCount; entry++) {
+        index += 6;
+        int attributesCount = u2(classBytecode, index);
+        index += 2;
+        //        attribute_info {
+        //          u2 attribute_name_index;
+        //          u4 attribute_length;
+        //          u1 info[attribute_length];
+        //        }
+        for (int attributeEntry = 0; attributeEntry < attributesCount; attributeEntry++) {
+          int attributeNameIndex = u2(classBytecode, index);
+          int attributeLength = u4(classBytecode, index + 2);
+          String attributeName = (String) constants.get(attributeNameIndex).getValue();
+          if (attributeName.trim().equals("Code")) {
+            int startIndex = index + 6;
+            int codeLength = u4(classBytecode, startIndex + 4);
+            startIndex = startIndex + 8;
+            for (int codeLine = 0; codeLine < codeLength; codeLine++) {
+              byte opcode = classBytecode[startIndex + codeLine];
+              BytecodeInstruction inst = BytecodeInstruction.fromOpcode(opcode);
+              if (inst == BytecodeInstruction.LDC || inst == BytecodeInstruction.LDC_W) {
+                int constIndex =
+                    inst == BytecodeInstruction.LDC_W
+                        ? u2(classBytecode, startIndex + codeLine + 1)
+                        : classBytecode[startIndex + codeLine + 1];
+                ConstantItem<?> item = constants.get(constIndex);
+
+                // Explanation of the following block logic:
+                //
+                // This finds the latest constant string in a variable.
+                //
+                // Then we save a true value if that constant matches the enum constant name we are
+                // trying to remove.
+                //
+                // Then we continue the loop until we find another string constant.
+                //
+                // We check to see if the next string constant we find matches the enum string
+                // argument we are looking for.
+                //
+                // If a match, we (probably) found the enum we were looking for.
+                //
+                // LIMITATIONS: This assumes that the next string constant is going to be where we
+                // find
+                // the enum argument constructor we are looking for, but it could be a later
+                // argument.
+                if (item.getType() == ConstantPoolType.STRING_REF) {
+                  int stringRefIndex = (int) item.getValue();
+                  String constantString =
+                      constants.get(stringRefIndex).getValue().toString().trim();
+                  if (foundConstant) {
+                    if (constantString.contains(xpFlagName)) {
+                      return true;
+                    }
+                  }
+                  foundConstant = constantString.contains(enumName);
+                }
+              }
+              if (inst.getOtherBytes() > 0) {
+                codeLine += inst.getOtherBytes();
+              }
+            }
+            //            Code_attribute {
+            //              u2 attribute_name_index;
+            //              u4 attribute_length;
+            //              u2 max_stack;
+            //              u2 max_locals;
+            //              u4 code_length;
+            //              u1 code[code_length];
+            //              u2 exception_table_length;
+            //              {   u2 start_pc;
+            //                u2 end_pc;
+            //                u2 handler_pc;
+            //                u2 catch_type;
+            //              } exception_table[exception_table_length];
+            //              u2 attributes_count;
+            //              attribute_info attributes[attributes_count];
+            //            }
+          }
+          index += 6 + attributeLength;
+        }
+      }
+
+      return false;
     }
 
     List<? extends ExpressionTree> constructorArguments =

@@ -17,6 +17,7 @@ import static com.uber.piranha.PiranhaTestingHelpers.addExperimentFlagEnumsWithC
 
 import com.google.errorprone.BugCheckerRefactoringTestHelper;
 import com.google.errorprone.ErrorProneFlags;
+import java.io.IOException;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.rules.TemporaryFolder;
@@ -844,6 +845,48 @@ public class EnumConstantTest {
             " OTHER_FLAG;",
             " private Object obj = new Object();",
             " TestExperimentName() {",
+            " }",
+            "}")
+        .doTest();
+  }
+
+  @Test
+  public void testEnumInJarFile() throws IOException {
+    ErrorProneFlags.Builder b = ErrorProneFlags.builder();
+    b.putFlag("Piranha:FlagName", "stale.flag");
+    b.putFlag("Piranha:IsTreated", "false");
+    b.putFlag("Piranha:Config", "config/properties.json");
+
+    BugCheckerRefactoringTestHelper bcr =
+        BugCheckerRefactoringTestHelper.newInstance(new XPFlagCleaner(b.build()), getClass());
+
+    bcr =
+        bcr.setArgs(
+            "-classpath",
+            "src/test/resources/com/uber/piranha/TestExperimentName.jar",
+            "-d",
+            temporaryFolder.getRoot().getAbsolutePath());
+
+    bcr = PiranhaTestingHelpers.addHelperClasses(bcr);
+
+    bcr.addInputLines(
+            "EnumInJarFile.java",
+            "package com.uber.piranha;",
+            "import static com.uber.piranha.TestExperimentName.STALE_FLAG;",
+            "public class EnumInJarFile {",
+            " private XPTest experimentation;",
+            " public String evaluate() {",
+            "  if (experimentation.isToggleDisabled(STALE_FLAG)) { return \"X\"; }",
+            "     else { return \"Y\";}",
+            " }",
+            "}")
+        .addOutputLines(
+            "EnumInJarFile.java",
+            "package com.uber.piranha;",
+            "public class EnumInJarFile {",
+            " private XPTest experimentation;",
+            " public String evaluate() {",
+            "   return \"X\";",
             " }",
             "}")
         .doTest();
