@@ -17,8 +17,7 @@
 import net.ltgt.gradle.errorprone.CheckSeverity
 buildscript {
     repositories {
-        mavenCentral()
-        google() // For Gradle 4.0+
+        mavenLocal()
     }
 
     dependencies {
@@ -26,18 +25,20 @@ buildscript {
     }
 }
 plugins {
+  id 'maven-publish'
   id "com.github.sherter.google-java-format" version "0.8"
   id "net.ltgt.errorprone" version "2.0.2" apply false
   id "com.github.nbaztec.coveralls-jacoco" version "1.2.5" apply false
 }
 
 repositories {
-    mavenCentral()
+    mavenLocal()
 }
 
 apply from: "gradle/dependencies.gradle"
 
 subprojects { project ->
+    project.apply plugin: "maven-publish"
     project.apply plugin: "net.ltgt.errorprone"
     project.dependencies {
         errorprone deps.build.errorProneCore
@@ -57,8 +58,21 @@ subprojects { project ->
             check("WildcardImport", CheckSeverity.ERROR)
         }
     }
+    if (project.plugins.hasPlugin('java')) {
+        publishing {
+            publications {
+                maven(MavenPublication) {
+                    groupId = GROUP
+                    artifactId = "piranha"
+                    version = VERSION_NAME
+                    from components.java
+                }
+            }
+        }
+    }
 
     repositories {
+        mavenLocal()
         jcenter()
     }
 
@@ -79,4 +93,14 @@ tasks.register('installGitHooks', Copy) {
 	}
 	into file('../.git/hooks')
 	fileMode 0777
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = GROUP
+            artifactId = "piranha"
+            version = VERSION_NAME
+        }
+    }
 }
