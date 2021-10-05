@@ -15,7 +15,7 @@
  */
 
 def versions = [
-    errorProne             : "2.9.0",
+    errorProne             : "2.9.0-4",
 ]
 
 def apt = [
@@ -23,10 +23,10 @@ def apt = [
 ]
 
 def build = [
-    errorProneCheckApi      : "com.google.errorprone:error_prone_check_api:${versions.errorProne}",
-    errorProneCore          : "com.google.errorprone:error_prone_core:${versions.errorProne}",
+    errorProneCheckApi      : "com.atlassian.google.errorprone:error_prone_check_api:${versions.errorProne}",
+    errorProneCore          : "com.atlassian.google.errorprone:error_prone_core:${versions.errorProne}",
     errorProneJavac         : "com.google.errorprone:javac:9+181-r4173-1",
-    errorProneTestHelpers   : "com.google.errorprone:error_prone_test_helpers:${versions.errorProne}",
+    errorProneTestHelpers   : "com.atlassian.google.errorprone:error_prone_test_helpers:${versions.errorProne}",
     gradleErrorPronePlugin  : "net.ltgt.gradle:gradle-errorprone-plugin:0.0.16",
     googleJsonSimple        : "com.googlecode.json-simple:json-simple:1.1.1",
     jsr305Annotations       : "com.google.code.findbugs:jsr305:3.0.2",
