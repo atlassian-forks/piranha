@@ -18,6 +18,13 @@ import net.ltgt.gradle.errorprone.CheckSeverity
 buildscript {
     repositories {
         mavenLocal()
+        maven {
+            url "http://packages.atlassian.com/artifactory/maven-private-local"
+            credentials {
+                username = ""
+                password = ""
+            }
+        }
     }
 
     dependencies {
@@ -26,6 +33,7 @@ buildscript {
 }
 plugins {
   id 'maven-publish'
+  id "com.jfrog.artifactory" version "4.24.20"
   id "com.github.sherter.google-java-format" version "0.8"
   id "net.ltgt.errorprone" version "2.0.2" apply false
   id "com.github.nbaztec.coveralls-jacoco" version "1.2.5" apply false
@@ -93,6 +101,23 @@ tasks.register('installGitHooks', Copy) {
 	}
 	into file('../.git/hooks')
 	fileMode 0777
+}
+
+artifactory {
+    publish {
+        contextUrl = 'http://packages.atlassian.com/artifactory'
+        repository {
+            repoKey = 'maven-private-local'
+            username = ''
+            password = ''
+        }
+        defaults {
+            publications('maven')
+            publishBuildInfo = true
+            publishArtifacts = true
+            publishPom = true
+        }
+    }
 }
 
 publishing {

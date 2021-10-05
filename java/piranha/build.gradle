@@ -18,6 +18,8 @@ import net.ltgt.gradle.errorprone.CheckSeverity
 
 plugins {
   id "java"
+  id "maven-publish"
+  id "com.jfrog.artifactory"
   // For code coverage:
   id 'jacoco'
   id 'com.github.nbaztec.coveralls-jacoco'
@@ -87,4 +89,32 @@ jacocoTestReport {
 
 coverallsJacoco {
     reportPath = "${project.projectDir}/build/reports/jacoco/test/jacocoTestReport.xml"
+}
+
+artifactory {
+    publish {
+        contextUrl = 'http://packages.atlassian.com/artifactory'
+        repository {
+            repoKey = 'maven-private-local'
+            username = ''
+            password = ''
+        }
+        defaults {
+            publications('maven')
+            publishBuildInfo = true
+            publishArtifacts = true
+            publishPom = true
+        }
+    }
+}
+
+publishing {
+    publications {
+        maven(MavenPublication) {
+            groupId = GROUP
+            artifactId = "piranha"
+            version = VERSION_NAME
+            from components.java
+        }
+    }
 }
