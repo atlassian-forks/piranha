@@ -91,23 +91,6 @@ coverallsJacoco {
     reportPath = "${project.projectDir}/build/reports/jacoco/test/jacocoTestReport.xml"
 }
 
-artifactory {
-    publish {
-        contextUrl = 'http://packages.atlassian.com/artifactory'
-        repository {
-            repoKey = 'maven-private-local'
-            username = ''
-            password = ''
-        }
-        defaults {
-            publications('maven')
-            publishBuildInfo = true
-            publishArtifacts = true
-            publishPom = true
-        }
-    }
-}
-
 publishing {
     publications {
         maven(MavenPublication) {
